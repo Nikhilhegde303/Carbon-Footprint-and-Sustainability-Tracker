@@ -1,195 +1,250 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
+import { getEmissionFactors, addActivity, getActivities } from '../utils/api.js';
+import './ActivityPage.css';
 
-function ActivityPage() {
-  const navigate = useNavigate();
+const ActivityPage = () => {
+  const { user } = useAuth();
+  const [emissionFactors, setEmissionFactors] = useState([]);
   const [activities, setActivities] = useState([]);
-  const [showForm, setShowForm] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [showActivities, setShowActivities] = useState(false);
   const [formData, setFormData] = useState({
-    factorId: '',
-    consumption: '',
-    date: new Date().toISOString().split('T')[0]
+    factor_id: '',
+    consumption_value: '',
+    activity_date: new Date().toISOString().split('T')[0]
   });
+  const [calculation, setCalculation] = useState(null);
 
-  const activityOptions = [
-    { id: 1, name: 'Car Travel (per km)', unit: 'km' },
-    { id: 2, name: 'Bus Travel (per km)', unit: 'km' },
-    { id: 3, name: 'Electricity Usage (per kWh)', unit: 'kWh' },
-    { id: 4, name: 'Beef Consumption (per kg)', unit: 'kg' },
-    { id: 5, name: 'Vegetables (per kg)', unit: 'kg' }
-  ];
+  useEffect(() => {
+    fetchEmissionFactors();
+  }, []);
+
+  const fetchEmissionFactors = async () => {
+    try {
+      const factors = await getEmissionFactors();
+      setEmissionFactors(factors);
+      if (factors.length > 0) {
+        setFormData(prev => ({ ...prev, factor_id: factors[0].factor_id }));
+      }
+    } catch (error) {
+      console.error('Error fetching emission factors:', error);
+      alert('Failed to load activity types');
+    }
+  };
+
+  const fetchActivities = async () => {
+    try {
+      const activityData = await getActivities();
+      setActivities(activityData);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+      alert('Failed to load activities');
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+
+    // Recalculate when factor or consumption changes
+    if ((name === 'factor_id' || name === 'consumption_value') && formData.consumption_value && formData.factor_id) {
+      calculateEmission();
+    }
+  };
+
+  const calculateEmission = () => {
+    if (!formData.consumption_value || !formData.factor_id) return;
+
+    const factor = emissionFactors.find(f => f.factor_id == formData.factor_id);
+    if (factor) {
+      const emission = formData.consumption_value * factor.emission_factor;
+      const points = Math.round(emission * 10);
+      setCalculation({
+        emission: emission.toFixed(4),
+        points: points,
+        unit: factor.unit
+      });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Simple validation
-    if (!formData.factorId || !formData.consumption) {
-      alert('Please fill all fields');
+    if (!formData.factor_id || !formData.consumption_value || !formData.activity_date) {
+      alert('Please fill in all fields');
       return;
     }
 
+    setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/activities', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
-
-      const result = await response.json();
+      const result = await addActivity(formData);
+      alert(`✅ ${result.message}\n🎉 Earned ${result.pointsEarned} points!`);
       
-      if (result.success) {
-        alert('Activity added successfully!');
-        setFormData({
-          factorId: '',
-          consumption: '',
-          date: new Date().toISOString().split('T')[0]
-        });
-      } else {
-        alert('Error: ' + result.message);
+      // Reset form
+      setFormData({
+        factor_id: emissionFactors[0]?.factor_id || '',
+        consumption_value: '',
+        activity_date: new Date().toISOString().split('T')[0]
+      });
+      setCalculation(null);
+      
+      // Refresh activities if showing
+      if (showActivities) {
+        fetchActivities();
       }
     } catch (error) {
-      console.error('Error adding activity:', error);
-      alert('Failed to add activity');
+      alert(error.message || 'Failed to add activity');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleViewActivities = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/activities', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setActivities(result.data);
-        setShowForm(false);
-      } else {
-        alert('Error: ' + result.message);
-      }
-    } catch (error) {
-      console.error('Error fetching activities:', error);
-      alert('Failed to fetch activities');
+  const toggleActivities = () => {
+    if (!showActivities) {
+      fetchActivities();
     }
-  };
-
-  const handleAddNew = () => {
-    setShowForm(true);
-    setActivities([]);
-  };
-
-  const getActivityName = (factorId) => {
-    const activity = activityOptions.find(a => a.id === factorId);
-    return activity ? activity.name : 'Unknown Activity';
+    setShowActivities(!showActivities);
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-      <h1>Activity Management</h1>
-      
-      <div style={{ marginBottom: '2rem' }}>
-        <button 
-          onClick={handleAddNew}
-          style={{ marginRight: '1rem', padding: '0.5rem 1rem' }}
-        >
-          Add New Activity
-        </button>
-        <button 
-          onClick={handleViewActivities}
-          style={{ padding: '0.5rem 1rem' }}
-        >
-          View My Activities
-        </button>
-      </div>
+    <div className="activity-page">
+      <div className="activity-container">
+        <h1>Log New Activity</h1>
+        <p>Track your carbon emissions and earn points</p>
 
-      {showForm ? (
-        <div style={{ border: '1px solid #ccc', padding: '2rem', borderRadius: '8px' }}>
-          <h2>Add New Activity</h2>
+        {/* Activity Form */}
+        <div className="activity-form-card">
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <label>Activity Type: </label>
+            <div className="form-group">
+              <label>Activity Type</label>
               <select 
-                value={formData.factorId} 
-                onChange={(e) => setFormData({...formData, factorId: e.target.value})}
-                style={{ padding: '0.5rem', marginLeft: '1rem', width: '300px' }}
+                name="factor_id" 
+                value={formData.factor_id} 
+                onChange={handleInputChange}
                 required
               >
-                <option value="">Select Activity</option>
-                {activityOptions.map(activity => (
-                  <option key={activity.id} value={activity.id}>
-                    {activity.name}
+                <option value="">Select an activity</option>
+                {emissionFactors.map(factor => (
+                  <option key={factor.factor_id} value={factor.factor_id}>
+                    {factor.activity_name} ({factor.category}) - {factor.emission_factor} {factor.unit}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <label>Consumption Value: </label>
-              <input 
-                type="number" 
+            <div className="form-group">
+              <label>Consumption Value</label>
+              <input
+                type="number"
+                name="consumption_value"
+                value={formData.consumption_value}
+                onChange={handleInputChange}
                 step="0.01"
-                value={formData.consumption} 
-                onChange={(e) => setFormData({...formData, consumption: e.target.value})}
-                style={{ padding: '0.5rem', marginLeft: '1rem' }}
-                placeholder="e.g., 100"
+                min="0"
+                placeholder="Enter consumption amount"
                 required
               />
             </div>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <label>Date: </label>
-              <input 
-                type="date" 
-                value={formData.date} 
-                onChange={(e) => setFormData({...formData, date: e.target.value})}
-                style={{ padding: '0.5rem', marginLeft: '1rem' }}
+            <div className="form-group">
+              <label>Date</label>
+              <input
+                type="date"
+                name="activity_date"
+                value={formData.activity_date}
+                onChange={handleInputChange}
                 required
               />
             </div>
 
-            <button type="submit" style={{ padding: '0.5rem 2rem' }}>
-              Save Activity
+            {/* Calculation Preview */}
+            {calculation && (
+              <div className="calculation-preview">
+                <h3>Emission Calculation</h3>
+                <div className="calculation-details">
+                  <div className="calculation-item">
+                    <span>Carbon Emission:</span>
+                    <strong>{calculation.emission} {calculation.unit}</strong>
+                  </div>
+                  <div className="calculation-item">
+                    <span>Points to Earn:</span>
+                    <strong className="points">{calculation.points} points</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="submit-btn"
+              disabled={loading}
+            >
+              {loading ? 'Adding Activity...' : '📝 Log Activity'}
             </button>
           </form>
         </div>
-      ) : (
-        <div>
-          <h2>My Activities</h2>
-          {activities.length === 0 ? (
-            <p>No activities found</p>
-          ) : (
-            <table border="1" style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '0.5rem' }}>Activity Type</th>
-                  <th style={{ padding: '0.5rem' }}>Consumption</th>
-                  <th style={{ padding: '0.5rem' }}>Emission</th>
-                  <th style={{ padding: '0.5rem' }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activities.map((activity) => (
-                  <tr key={activity.activity_id}>
-                    <td style={{ padding: '0.5rem' }}>{getActivityName(activity.factor_id)}</td>
-                    <td style={{ padding: '0.5rem' }}>{activity.consumption_value}</td>
-                    <td style={{ padding: '0.5rem' }}>{activity.calculated_emission} kg CO2</td>
-                    <td style={{ padding: '0.5rem' }}>{new Date(activity.activity_date).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+
+        {/* View Activities Button */}
+        <div className="view-activities-section">
+          <button 
+            onClick={toggleActivities}
+            className="toggle-activities-btn"
+          >
+            {showActivities ? '▲ Hide Activities' : '▼ View My Activities'}
+          </button>
         </div>
-      )}
+
+        {/* Activities List */}
+        {showActivities && (
+          <div className="activities-list">
+            <h2>My Activities</h2>
+            {activities.length === 0 ? (
+              <div className="no-activities">
+                <p>No activities logged yet. Start by adding your first activity above!</p>
+              </div>
+            ) : (
+              <div className="activities-grid">
+                {activities.map(activity => (
+                  <div key={activity.activity_id} className="activity-card">
+                    <div className="activity-header">
+                      <h3>{activity.activity_name}</h3>
+                      <span className="activity-date">
+                        {new Date(activity.activity_date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="activity-details">
+                      <div className="detail-item">
+                        <span>Consumption:</span>
+                        <strong>{activity.consumption_value} {activity.unit}</strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>Carbon Emission:</span>
+                        <strong className="emission">
+                          {activity.calculated_emission} kg CO₂
+                        </strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>Points Earned:</span>
+                        <strong className="points">+{activity.points_earned}</strong>
+                      </div>
+                    </div>
+                    <div className="activity-category">
+                      <span className={`category-badge ${activity.category.toLowerCase()}`}>
+                        {activity.category}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
-}
+};
 
 export default ActivityPage;

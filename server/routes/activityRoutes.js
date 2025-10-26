@@ -1,10 +1,10 @@
-import express from 'express';
-import { addActivity, getActivities } from '../controllers/activityController.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import express from 'express'
+import { getActivities, addActivity } from '../controllers/activityController.js'
+import { authenticateToken } from '../middleware/authMiddleware.js'
 
-const router = express.Router();
+const router = express.Router()
 
-router.post('/', authenticateToken, addActivity);
-router.get('/', authenticateToken, getActivities);
+router.get('/', authenticateToken, getActivities)
+router.post('/', authenticateToken, addActivity)
 
-export default router;
+export default router

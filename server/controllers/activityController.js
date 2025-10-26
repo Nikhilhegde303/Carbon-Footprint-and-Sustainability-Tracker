@@ -1,17 +1,16 @@
 import pool from '../config/database.js';
 
-// INSERT query - Add new activity
 export const addActivity = async (req, res) => {
   try {
-    const { factorId, consumption, date } = req.body;
+    const { factor_id, consumption_value, activity_date } = req.body;
     const userId = req.user.userId;
 
-    console.log('Adding activity:', { userId, factorId, consumption, date });
+    console.log('🔵 Adding activity for user:', userId, req.body);
 
-    // Get emission factor from database
+    // Get emission factor
     const [factors] = await pool.execute(
-      'SELECT emission_factor FROM emission_factor WHERE factor_id = ?',
-      [factorId]
+      'SELECT * FROM emission_factor WHERE factor_id = ?',
+      [factor_id]
     );
 
     if (factors.length === 0) {
@@ -21,62 +20,75 @@ export const addActivity = async (req, res) => {
       });
     }
 
-    const emissionFactor = factors[0].emission_factor;
-    const calculatedEmission = consumption * emissionFactor;
+    const factor = factors[0];
+    const calculatedEmission = consumption_value * factor.emission_factor;
+    const pointsEarned = Math.round(calculatedEmission * 10);
 
-    // Use your actual table column names
+    // Insert activity
     const [result] = await pool.execute(
-      'INSERT INTO activity (user_id, factor_id, activity_date, consumption_value, calculated_emission) VALUES (?, ?, ?, ?, ?)',
-      [userId, factorId, date, consumption, calculatedEmission]
+      `INSERT INTO activity 
+       (user_id, factor_id, activity_date, consumption_value, calculated_emission, points_earned) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, factor_id, activity_date, consumption_value, calculatedEmission, pointsEarned]
     );
+
+    // Update user points
+    await pool.execute(
+      'UPDATE user SET total_points = total_points + ? WHERE user_id = ?',
+      [pointsEarned, userId]
+    );
+
+    console.log('✅ Activity added successfully');
 
     res.json({
       success: true,
-      message: 'Activity added successfully',
-      activityId: result.insertId
+      message: 'Activity added successfully!',
+      activityId: result.insertId,
+      pointsEarned: pointsEarned,
+      calculatedEmission: calculatedEmission,
+      activityName: factor.activity_name
     });
+
   } catch (error) {
-    console.error('Error adding activity:', error);
+    console.error('❌ Error adding activity:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to add activity: ' + error.message
+      message: 'Failed to add activity'
     });
   }
 };
 
-// SELECT query - Get user activities
 export const getActivities = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    console.log('Fetching activities for user:', userId);
-
-    // Simple SELECT with your table columns
-    const [activities] = await pool.execute(
-      `SELECT 
-        activity_id, 
-        factor_id,
-        activity_date, 
-        consumption_value,
-        calculated_emission,
-        points_earned
-       FROM activity 
-       WHERE user_id = ? 
-       ORDER BY activity_date DESC`,
-      [userId]
-    );
-
-    console.log('Found activities:', activities);
+    const [activities] = await pool.execute(`
+      SELECT 
+        a.activity_id,
+        a.activity_date,
+        a.consumption_value,
+        a.calculated_emission,
+        a.points_earned,
+        ef.activity_name,
+        ef.unit,
+        ef.category,
+        ef.emission_factor
+      FROM activity a
+      INNER JOIN emission_factor ef ON a.factor_id = ef.factor_id
+      WHERE a.user_id = ?
+      ORDER BY a.activity_date DESC, a.created_at DESC
+    `, [userId]);
 
     res.json({
       success: true,
       data: activities
     });
+
   } catch (error) {
-    console.error('Error fetching activities:', error);
+    console.error('❌ Error fetching activities:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch activities: ' + error.message
+      message: 'Failed to fetch activities'
     });
   }
 };

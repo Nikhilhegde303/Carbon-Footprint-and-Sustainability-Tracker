@@ -1,9 +1,15 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+
+// Import routes
 import authRoutes from './routes/authRoutes.js'
 import userRoutes from './routes/userRoutes.js'
-import activityRoutes from './routes/activityRoutes.js';
+import activityRoutes from './routes/activityRoutes.js'
+import dashboardRoutes from './routes/dashboardRoutes.js'
+import challengeRoutes from './routes/challengeRoutes.js'
+import rewardRoutes from './routes/rewardRoutes.js'
+import emissionRoutes from './routes/emissionRoutes.js'
 
 dotenv.config()
 
@@ -14,34 +20,58 @@ const PORT = process.env.PORT || 5000
 app.use(cors())
 app.use(express.json())
 
-// Routes
-app.use('/api/auth', authRoutes)
-app.use('/api/user', userRoutes)
-app.use('/api/activities', activityRoutes);
-
-// Basic route
-app.get('/', (req, res) => {
-  res.json({ message: 'Carbon Footprint Tracker API' })
+// Logging middleware
+app.use((req, res, next) => {
+  console.log(`📥 ${new Date().toISOString()} - ${req.method} ${req.path}`)
+  next()
 })
 
-// 404 handler - FIXED: Remove the problematic wildcard route
-// app.use('*', (req, res) => {  // REMOVE THIS LINE
-//   res.status(404).json({ 
-//     success: false, 
-//     message: 'Route not found' 
-//   })
-// })
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack)
-  res.status(500).json({ 
-    success: false, 
-    message: 'Something went wrong!' 
+// Add this RIGHT AFTER your middleware, before other routes
+app.post('/api/debug/register', (req, res) => {
+  console.log('🔵 DEBUG REGISTER HIT - Request body:', req.body)
+  res.json({ 
+    success: true, 
+    message: 'Debug endpoint working',
+    received: req.body
   })
 })
 
-// Simple 404 handler at the end
+// Routes
+app.use('/api/auth', authRoutes)
+app.use('/api/user', userRoutes)
+app.use('/api/activities', activityRoutes)
+app.use('/api/dashboard', dashboardRoutes)
+app.use('/api/challenges', challengeRoutes)
+app.use('/api/rewards', rewardRoutes)
+app.use('/api/emission-factors', emissionRoutes)
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Carbon Footprint Tracker API',
+    version: '1.0.0'
+  })
+})
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Server is running healthy'
+  })
+})
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error('❌ Server Error:', err)
+  res.status(500).json({ 
+    success: false, 
+    message: 'Internal server error' 
+  })
+})
+
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
     success: false, 
@@ -49,8 +79,7 @@ app.use((req, res) => {
   })
 })
 
-
-
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
+  console.log(`🚀 Server running on port ${PORT}`)
+  console.log(`📍 http://localhost:${PORT}`)
 })

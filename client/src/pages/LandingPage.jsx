@@ -7,7 +7,6 @@ function LandingPage() {
 
   return (
     <div style={{ padding: '2rem' }}>
-      {/* Hero Section */}
       <section style={{ 
         textAlign: 'center', 
         padding: '4rem 2rem',

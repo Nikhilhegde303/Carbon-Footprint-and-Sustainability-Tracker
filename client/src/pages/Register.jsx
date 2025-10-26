@@ -1,18 +1,20 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { registerUser } from '../utils/api'
+import { useAuth } from '../context/AuthContext.jsx'
+import { registerUser } from '../utils/api.js'
 
-function Register() {
+const Register = () => {
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    first_name: '',
+    last_name: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    userType: 'individual'
+    confirmPassword: ''
   })
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  
+  const { login } = useAuth()
   const navigate = useNavigate()
 
   const handleChange = (e) => {
@@ -20,27 +22,39 @@ function Register() {
       ...formData,
       [e.target.name]: e.target.value
     })
+    setError('')
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    
+
+    // Validation
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
       return
     }
 
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+
     setLoading(true)
+
     try {
-      const response = await registerUser(formData)
-      if (response.success) {
-        navigate('/login', { 
-          state: { message: 'Registration successful! Please login.' } 
-        })
+      const { confirmPassword, ...submitData } = formData
+      
+      const result = await registerUser(submitData)
+      
+      if (result.success) {
+        // Login the user after successful registration
+        login(result.user, result.token)
+        navigate('/dashboard')
       }
     } catch (err) {
-      setError(err.message || 'Registration failed')
+      console.error('Registration error:', err)
+      setError(err.message || 'Registration failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -48,158 +62,132 @@ function Register() {
 
   return (
     <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      minHeight: '80vh',
-      padding: '2rem'
+      maxWidth: '400px', 
+      margin: '2rem auto', 
+      padding: '2rem',
+      border: '1px solid #ddd',
+      borderRadius: '8px'
     }}>
-      <div style={{ 
-        width: '100%', 
-        maxWidth: '400px', 
-        padding: '2rem',
-        border: '1px solid #ddd',
-        borderRadius: '0.5rem'
-      }}>
-        <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Create Your Account</h2>
-        
-        {error && (
-          <div style={{ 
-            padding: '1rem', 
-            backgroundColor: '#fee2e2', 
-            color: '#dc2626',
-            borderRadius: '0.25rem',
-            marginBottom: '1rem'
-          }}>
-            {error}
-          </div>
-        )}
+      <h2>Create Account</h2>
+      
+      {error && (
+        <div style={{ 
+          color: 'red', 
+          backgroundColor: '#ffe6e6',
+          padding: '0.5rem',
+          borderRadius: '4px',
+          marginBottom: '1rem'
+        }}>
+          {error}
+        </div>
+      )}
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="text"
-              name="firstName"
-              placeholder="First Name"
-              value={formData.firstName}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '0.25rem'
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="text"
-              name="lastName"
-              placeholder="Last Name"
-              value={formData.lastName}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '0.25rem'
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="email"
-              name="email"
-              placeholder="Email Address"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '0.25rem'
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <select 
-              name="userType" 
-              value={formData.userType} 
-              onChange={handleChange}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '0.25rem'
-              }}
-            >
-              <option value="individual">Individual</option>
-              <option value="organization">Organization</option>
-              <option value="educational">Educational</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="password"
-              name="password"
-              placeholder="Password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '0.25rem'
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="password"
-              name="confirmPassword"
-              placeholder="Confirm Password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '0.25rem'
-              }}
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={loading}
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="text"
+            name="first_name"
+            placeholder="First Name"
+            value={formData.first_name}
+            onChange={handleChange}
+            required
             style={{
               width: '100%',
               padding: '0.75rem',
-              backgroundColor: loading ? '#9ca3af' : '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.25rem',
-              cursor: loading ? 'not-allowed' : 'pointer'
+              border: '1px solid #ccc',
+              borderRadius: '4px'
             }}
-          >
-            {loading ? 'Creating Account...' : 'Register'}
-          </button>
-        </form>
+          />
+        </div>
 
-        <p style={{ textAlign: 'center', marginTop: '1rem' }}>
-          Already have an account? <Link to="/login">Login here</Link>
-        </p>
-      </div>
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="text"
+            name="last_name"
+            placeholder="Last Name"
+            value={formData.last_name}
+            onChange={handleChange}
+            required
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ccc',
+              borderRadius: '4px'
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ccc',
+              borderRadius: '4px'
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ccc',
+              borderRadius: '4px'
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <input
+            type="password"
+            name="confirmPassword"
+            placeholder="Confirm Password"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            required
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ccc',
+              borderRadius: '4px'
+            }}
+          />
+        </div>
+
+        <button 
+          type="submit" 
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '0.75rem',
+            backgroundColor: loading ? '#ccc' : '#2d6a4f',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: loading ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {loading ? 'Creating Account...' : 'Register'}
+        </button>
+      </form>
+
+      <p style={{ textAlign: 'center', marginTop: '1rem' }}>
+        Already have an account? <Link to="/login">Login here</Link>
+      </p>
     </div>
   )
 }

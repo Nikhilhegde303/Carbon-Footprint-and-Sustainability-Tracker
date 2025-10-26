@@ -13,9 +13,9 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key_123')
     
-    // Get user from database - Use exact column names
+    // Get user from database
     const [users] = await pool.execute(
       'SELECT user_id, first_name, last_name, email, user_type, total_points FROM user WHERE user_id = ?',
       [decoded.userId]
