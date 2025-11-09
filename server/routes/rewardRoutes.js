@@ -1,11 +1,16 @@
-import express from 'express'
-import { getRewards, redeemReward, getRedemptionHistory } from '../controllers/rewardController.js'
-import { authenticateToken } from '../middleware/authMiddleware.js'
+import express from 'express';
+import { authenticateToken } from '../middleware/authMiddleware.js';
+import {
+  getRewards,
+  redeemReward,
+  getRedemptionHistory
+} from '../controllers/rewardController.js';
 
-const router = express.Router()
+const router = express.Router();
 
-router.get('/', authenticateToken, getRewards)
-router.get('/history', authenticateToken, getRedemptionHistory)
-router.post('/redeem', authenticateToken, redeemReward)
+// Public/Protected routes
+router.get('/', authenticateToken, getRewards);
+router.post('/redeem', authenticateToken, redeemReward);
+router.get('/history', authenticateToken, getRedemptionHistory);
 
-export default router
+export default router;

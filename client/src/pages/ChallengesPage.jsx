@@ -1,103 +1,154 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from '../context/AuthContext.jsx'
-import { getChallenges, joinChallenge, getUserChallenges } from '../utils/api.js'
-import './ChallengesPage.css'
+import React, { useEffect, useState } from "react";
+import { getChallenges, joinChallenge, leaveChallenge } from "../utils/api";
+import "./ChallengesPage.css";
 
-const ChallengesPage = () => {
-  const { user } = useAuth()
-  const [challenges, setChallenges] = useState([])
-  const [userChallenges, setUserChallenges] = useState([])
-  const [loading, setLoading] = useState(true)
+export default function ChallengesPage() {
+  const [available, setAvailable] = useState([]);
+  const [mine, setMine] = useState([]);
+  const [tab, setTab] = useState("available"); // 'available' | 'mine'
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState("");
+  const [busy, setBusy] = useState({}); // { [id]: boolean }
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
+  const load = async () => {
     try {
-      const [allChallenges, myChallenges] = await Promise.all([
-        getChallenges(),
-        getUserChallenges()
-      ])
-      setChallenges(allChallenges)
-      setUserChallenges(myChallenges)
-    } catch (error) {
-      console.error('Error fetching challenges:', error)
+      setLoading(true);
+      const data = await getChallenges();
+      setAvailable(Array.isArray(data?.available) ? data.available : []);
+      setMine(Array.isArray(data?.mine) ? data.mine : []);
+    } catch (e) {
+      setToast(e?.response?.data?.message || "Failed to load challenges");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const handleJoinChallenge = async (challengeId, challengeName) => {
+  useEffect(() => { load(); }, []);
+
+  const join = async (id) => {
     try {
-      await joinChallenge(challengeId)
-      alert(`Successfully joined "${challengeName}" challenge!`)
-      fetchData()
-    } catch (error) {
-      alert(error.message)
+      setBusy((s) => ({ ...s, [id]: true }));
+      await joinChallenge(id);
+      setToast("Joined challenge!");
+      // Move card from available → mine
+      const found = available.find(c => c.challenge_id === id);
+      setAvailable(av => av.filter(c => c.challenge_id !== id));
+      if (found) setMine(m => [{ ...found, participants: Number(found.participants || 0) + 1 }, ...m]);
+    } catch (e) {
+      setToast(e?.response?.data?.message || "Could not join");
+    } finally {
+      setBusy((s) => ({ ...s, [id]: false }));
     }
-  }
+  };
 
-  if (loading) return <div className="loading">Loading challenges...</div>
+  const leave = async (id) => {
+    try {
+      setBusy((s) => ({ ...s, [id]: true }));
+      await leaveChallenge(id);
+      setToast("Left challenge.");
+      // Move card from mine → available
+      const found = mine.find(c => c.challenge_id === id);
+      setMine(m => m.filter(c => c.challenge_id !== id));
+      if (found) setAvailable(a => [{ ...found, participants: Math.max(Number(found.participants || 0) - 1, 0) }, ...a]);
+    } catch (e) {
+      setToast(e?.response?.data?.message || "Could not leave");
+    } finally {
+      setBusy((s) => ({ ...s, [id]: false }));
+    }
+  };
 
   return (
-    <div className="page-container">
-      <h1>Carbon Reduction Challenges</h1>
-      
-      <section className="section">
-        <h2>My Active Challenges</h2>
-        <div className="challenges-grid">
-          {userChallenges.map(challenge => (
-            <div key={challenge.challenge_id} className="card active-challenge">
-              <h3>{challenge.challenge_name}</h3>
-              <p>{challenge.description}</p>
-              <div className="progress-bar">
-                <div 
-                  className="progress-fill"
-                  style={{ 
-                    width: `${Math.min((challenge.total_emission_saved / challenge.target_reduction) * 100, 100)}%` 
-                  }}
-                ></div>
-              </div>
-              <p>Progress: {challenge.total_emission_saved?.toFixed(2) || 0}kg / {challenge.target_reduction}kg CO₂ reduced</p>
-              <small>Joined: {new Date(challenge.joined_at).toLocaleDateString()}</small>
-            </div>
-          ))}
-          {userChallenges.length === 0 && (
-            <p>You haven't joined any challenges yet.</p>
-          )}
-        </div>
-      </section>
+    <div className="ch-page">
+      <header className="ch-hero">
+        <h1>🌍 Sustainability Challenges</h1>
+        <p>Join challenges to reduce your footprint and earn rewards.</p>
+      </header>
 
-      <section className="section">
-        <h2>Available Challenges</h2>
-        <div className="challenges-grid">
-          {challenges.map(challenge => (
-            <div key={challenge.challenge_id} className="card">
-              <h3>{challenge.challenge_name}</h3>
-              <p>{challenge.description}</p>
-              <div className="challenge-meta">
-                <span>🎯 Target: {challenge.target_reduction}kg CO₂</span>
-                <span>🏆 Reward: {challenge.reward_points} points</span>
-                <span>👥 Participants: {challenge.participant_count}</span>
-                <span>By: {challenge.creator_name}</span>
-              </div>
-              {challenge.user_joined ? (
-                <button className="btn btn-disabled" disabled>Already Joined</button>
-              ) : (
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => handleJoinChallenge(challenge.challenge_id, challenge.challenge_name)}
-                >
-                  Join Challenge
-                </button>
-              )}
-            </div>
-          ))}
+      {toast && <div className="ch-toast" onAnimationEnd={() => setToast("")}>{toast}</div>}
+
+      <div className="ch-tabs">
+        <button className={tab === "available" ? "active" : ""} onClick={() => setTab("available")}>
+          Available
+          <span className="badge">{available.length}</span>
+        </button>
+        <button className={tab === "mine" ? "active" : ""} onClick={() => setTab("mine")}>
+          My Challenges
+          <span className="badge">{mine.length}</span>
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="skeleton-grid">
+          {[...Array(6)].map((_, i) => <div className="skeleton-card" key={i} />)}
         </div>
-      </section>
+      ) : (
+        <>
+          {tab === "available" && (
+            available.length === 0 ? (
+              <div className="empty">
+                <h3>No active challenges right now</h3>
+                <p>Check back soon!</p>
+              </div>
+            ) : (
+              <div className="ch-grid">
+                {available.map(c => (
+                  <Card key={c.challenge_id} c={c}>
+                    <button
+                      className="btn primary"
+                      disabled={busy[c.challenge_id]}
+                      onClick={() => join(c.challenge_id)}
+                    >
+                      {busy[c.challenge_id] ? "Joining..." : "Join"}
+                    </button>
+                  </Card>
+                ))}
+              </div>
+            )
+          )}
+
+          {tab === "mine" && (
+            mine.length === 0 ? (
+              <div className="empty">
+                <h3>You haven’t joined any challenges yet</h3>
+                <p>Pick one from the “Available” tab to get started.</p>
+              </div>
+            ) : (
+              <div className="ch-grid">
+                {mine.map(c => (
+                  <Card key={c.challenge_id} c={c}>
+                    <button
+                      className="btn ghost"
+                      disabled={busy[c.challenge_id]}
+                      onClick={() => leave(c.challenge_id)}
+                    >
+                      {busy[c.challenge_id] ? "Leaving..." : "Leave"}
+                    </button>
+                  </Card>
+                ))}
+              </div>
+            )
+          )}
+        </>
+      )}
     </div>
-  )
+  );
 }
 
-export default ChallengesPage
+function Card({ c, children }) {
+  const fmt = (d) => new Date(d).toLocaleDateString();
+  return (
+    <div className="ch-card">
+      <div className="ch-card-head">
+        <h3>{c.challenge_name}</h3>
+        <span className={`pill ${c.category}`}>{c.category}</span>
+      </div>
+      <p className="desc">{c.description}</p>
+      <div className="meta">
+        <div><strong>Reward</strong><div>{c.reward_points} pts</div></div>
+        <div><strong>Participants</strong><div>{c.participants ?? 0}</div></div>
+        <div><strong>Duration</strong><div>{fmt(c.start_date)} – {fmt(c.end_date)}</div></div>
+      </div>
+      <div className="actions">{children}</div>
+    </div>
+  );
+}

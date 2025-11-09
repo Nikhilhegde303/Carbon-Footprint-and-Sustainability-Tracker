@@ -1,105 +1,92 @@
-import pool from '../config/database.js';
+import db from "../config/database.js";
 
-// Get all active challenges with participant count - FIXED: challenges table name
-const getChallenges = async (req, res) => {
+// Helper – normalize user id property (your Dashboard uses req.user.userId)
+const getReqUserId = (req) => req.user?.userId ?? req.user?.user_id;
+
+export const listChallengesForUser = async (req, res) => {
+  const userId = getReqUserId(req);
   try {
-    const [challenges] = await pool.execute(`
-      SELECT 
-        cc.*,
-        u.first_name as creator_name,
-        COUNT(uc.user_id) as participant_count,
-        EXISTS(
-          SELECT 1 FROM user_challenges 
-          WHERE user_id = ? AND challenge_id = cc.challenge_id
-        ) as user_joined
-      FROM challenges cc
-      LEFT JOIN user u ON cc.created_by_user_id = u.user_id
-      LEFT JOIN user_challenges uc ON cc.challenge_id = uc.challenge_id
-      WHERE cc.is_active = true
-      GROUP BY cc.challenge_id
-      ORDER BY cc.start_date DESC
-    `, [req.user.userId]);
+    // My challenges
+    const [mine] = await db.query(
+      `SELECT c.challenge_id, c.challenge_name, c.description, c.category,
+              c.reward_points, c.start_date, c.end_date,
+              (SELECT COUNT(*) FROM user_challenges uc WHERE uc.challenge_id = c.challenge_id) AS participants
+       FROM challenges c
+       INNER JOIN user_challenges uc ON uc.challenge_id = c.challenge_id
+       WHERE uc.user_id = ? AND c.is_active = 1
+       ORDER BY c.start_date DESC`,
+      [userId]
+    );
 
-    res.json({ success: true, data: challenges });
-  } catch (error) {
-    console.error('Get challenges error:', error);
-    res.status(500).json({ success: false, message: 'Server error fetching challenges' });
+    // Available (not joined)
+    const [available] = await db.query(
+      `SELECT c.challenge_id, c.challenge_name, c.description, c.category,
+              c.reward_points, c.start_date, c.end_date,
+              (SELECT COUNT(*) FROM user_challenges uc WHERE uc.challenge_id = c.challenge_id) AS participants
+       FROM challenges c
+       WHERE c.is_active = 1
+         AND c.challenge_id NOT IN (
+             SELECT challenge_id FROM user_challenges WHERE user_id = ?
+         )
+       ORDER BY c.start_date DESC`,
+      [userId]
+    );
+
+    return res.status(200).json({ available, mine });
+  } catch (e) {
+    console.error("Error listChallengesForUser:", e);
+    return res.status(500).json({ message: "Failed to load challenges" });
   }
 };
 
-// Join a challenge
-const joinChallenge = async (req, res) => {
+export const joinChallenge = async (req, res) => {
+  const userId = getReqUserId(req);
   const { challenge_id } = req.body;
-  
+
+  if (!challenge_id) return res.status(400).json({ message: "challenge_id is required" });
+
   try {
-    // Check if already joined using EXISTS
-    const [existing] = await pool.execute(
-      `SELECT EXISTS(
-        SELECT 1 FROM user_challenges 
-        WHERE user_id = ? AND challenge_id = ?
-      ) as already_joined`,
-      [req.user.userId, challenge_id]
+    await db.query(
+      "INSERT INTO user_challenges (user_id, challenge_id) VALUES (?, ?)",
+      [userId, challenge_id]
+    );
+    await db.query(
+      "UPDATE challenges SET participant_count = participant_count + 1 WHERE challenge_id = ?",
+      [challenge_id]
+    );
+    return res.status(200).json({ message: "Joined challenge" });
+  } catch (e) {
+    if (e.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "You already joined this challenge" });
+    }
+    console.error("joinChallenge error:", e);
+    return res.status(500).json({ message: "Failed to join challenge" });
+  }
+};
+
+export const leaveChallenge = async (req, res) => {
+  const userId = getReqUserId(req);
+  const { challenge_id } = req.params;
+
+  if (!challenge_id) return res.status(400).json({ message: "challenge_id is required" });
+
+  try {
+    const [result] = await db.query(
+      "DELETE FROM user_challenges WHERE user_id = ? AND challenge_id = ?",
+      [userId, challenge_id]
     );
 
-    if (existing[0].already_joined) {
-      return res.status(400).json({ success: false, message: 'Already joined this challenge' });
+    // Only decrement if a row was removed
+    if (result.affectedRows > 0) {
+      await db.query(
+        "UPDATE challenges SET participant_count = GREATEST(participant_count - 1, 0) WHERE challenge_id = ?",
+        [challenge_id]
+      );
     }
 
-    // Start transaction
-    await pool.execute('START TRANSACTION');
-
-    // Add user to challenge
-    await pool.execute(
-      'INSERT INTO user_challenges (user_id, challenge_id, joined_at) VALUES (?, ?, NOW())',
-      [req.user.userId, challenge_id]
-    );
-
-    // Update participant count using subquery
-    await pool.execute(`
-      UPDATE challenges 
-      SET participant_count = (
-        SELECT COUNT(*) FROM user_challenges WHERE challenge_id = ?
-      )
-      WHERE challenge_id = ?
-    `, [challenge_id, challenge_id]);
-
-    await pool.execute('COMMIT');
-    
-    res.json({ success: true, message: 'Successfully joined challenge' });
-  } catch (error) {
-    await pool.execute('ROLLBACK');
-    console.error('Join challenge error:', error);
-    res.status(500).json({ success: false, message: 'Error joining challenge' });
+    return res.status(200).json({ message: "Left challenge" });
+  } catch (e) {
+    console.error("leaveChallenge error:", e);
+    return res.status(500).json({ message: "Failed to leave challenge" });
   }
 };
-
-// Get user's joined challenges with progress - FIXED: challenges table name
-const getUserChallenges = async (req, res) => {
-  try {
-    const [challenges] = await pool.execute(`
-      SELECT 
-        cc.challenge_id,
-        cc.challenge_name,
-        cc.description,
-        cc.target_reduction,
-        cc.reward_points,
-        uc.joined_at,
-        COALESCE(SUM(a.calculated_emission), 0) as total_emission_saved,
-        (cc.target_reduction - COALESCE(SUM(a.calculated_emission), 0)) as remaining_target
-      FROM user_challenges uc
-      INNER JOIN challenges cc ON uc.challenge_id = cc.challenge_id
-      LEFT JOIN activity a ON uc.user_id = a.user_id 
-        AND a.activity_date BETWEEN cc.start_date AND cc.end_date
-      WHERE uc.user_id = ? AND cc.is_active = true
-      GROUP BY cc.challenge_id, uc.joined_at
-      HAVING total_emission_saved < cc.target_reduction
-    `, [req.user.userId]);
-
-    res.json({ success: true, data: challenges });
-  } catch (error) {
-    console.error('Get user challenges error:', error);
-    res.status(500).json({ success: false, message: 'Error fetching user challenges' });
-  }
-};
-
-export { getChallenges, joinChallenge, getUserChallenges };

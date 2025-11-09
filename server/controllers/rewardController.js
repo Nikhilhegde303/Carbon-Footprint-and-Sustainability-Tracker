@@ -1,120 +1,133 @@
 import pool from '../config/database.js';
 
-// Get all available rewards - FIXED: redemption table column name
-const getRewards = async (req, res) => {
+/**
+ * ✅ Get all available rewards
+ */
+export const getRewards = async (req, res) => {
   try {
-    const [rewards] = await pool.execute(`
-      SELECT 
-        r.*,
-        (r.stock_count - COALESCE(red.redemption_count, 0)) as available_stock,
-        CASE 
-          WHEN u.total_points >= r.points_required THEN 'eligible'
-          ELSE 'not_eligible'
-        END as user_eligibility
-      FROM reward r
-      LEFT JOIN (
-        SELECT reward_id, COUNT(*) as redemption_count 
-        FROM redemption 
-        GROUP BY reward_id
-      ) red ON r.reward_id = red.reward_id
-      CROSS JOIN user u
-      WHERE u.user_id = ?
-      HAVING available_stock > 0
-      ORDER BY r.points_required ASC
-    `, [req.user.userId]);
+    const [rewards] = await pool.execute(
+      `SELECT reward_id, name, description, points_required, stock_count
+       FROM reward
+       WHERE stock_count > 0
+       ORDER BY points_required ASC`
+    );
 
     res.json({ success: true, data: rewards });
   } catch (error) {
-    console.error('Get rewards error:', error);
-    res.status(500).json({ success: false, message: 'Error fetching rewards' });
+    console.error('❌ Error fetching rewards:', error);
+    res.status(500).json({ success: false, message: 'Failed to load rewards.' });
   }
 };
 
-// Redeem a reward - FIXED: redemption table column name
-const redeemReward = async (req, res) => {
+/**
+ * ✅ Redeem a reward
+ */
+export const redeemReward = async (req, res) => {
+  const userId = req.user?.userId ?? req.user?.user_id;
   const { reward_id } = req.body;
 
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  if (!reward_id) {
+    return res.status(400).json({ success: false, message: 'reward_id is required' });
+  }
+
+  const connection = await pool.getConnection();
+
   try {
-    await pool.execute('START TRANSACTION');
+    await connection.beginTransaction();
 
-    // Get user points and reward details using JOIN
-    const [userReward] = await pool.execute(`
-      SELECT u.user_id, u.total_points, r.points_required, r.stock_count,
-             COUNT(red.redemption_id) as redeemed_count
-      FROM user u
-      CROSS JOIN reward r
-      LEFT JOIN redemption red ON r.reward_id = red.reward_id
-      WHERE u.user_id = ? AND r.reward_id = ?
-      GROUP BY u.user_id, r.reward_id
-    `, [req.user.userId, reward_id]);
-
-    if (userReward.length === 0) {
-      await pool.execute('ROLLBACK');
-      return res.status(404).json({ success: false, message: 'Reward not found' });
-    }
-
-    const { total_points, points_required, stock_count, redeemed_count } = userReward[0];
-    const available_stock = stock_count - redeemed_count;
-
-    if (total_points < points_required) {
-      await pool.execute('ROLLBACK');
-      return res.status(400).json({ success: false, message: 'Insufficient points' });
-    }
-
-    if (available_stock <= 0) {
-      await pool.execute('ROLLBACK');
-      return res.status(400).json({ success: false, message: 'Reward out of stock' });
-    }
-
-    // Create redemption record - FIXED: column name redumption_date -> redemption_date
-    await pool.execute(
-      'INSERT INTO redemption (user_id, reward_id, points_spent) VALUES (?, ?, ?)',
-      [req.user.userId, reward_id, points_required]
+    // 1) Get reward details
+    const [[reward]] = await connection.execute(
+      `SELECT reward_id, name, points_required, stock_count
+       FROM reward
+       WHERE reward_id = ?
+       FOR UPDATE`,
+      [reward_id]
     );
 
-    // Update user points using arithmetic operation
-    await pool.execute(
-      'UPDATE user SET total_points = total_points - ? WHERE user_id = ?',
-      [points_required, req.user.userId]
+    if (!reward) {
+      throw new Error('Reward not found');
+    }
+
+    if (reward.stock_count <= 0) {
+      throw new Error('Reward out of stock');
+    }
+
+    // 2) Compute user available points (same as Dashboard)
+    const [[pointsRow]] = await connection.execute(
+      `SELECT SUM(points_earned) AS total_points
+       FROM activity
+       WHERE user_id = ?`,
+      [userId]
     );
 
-    await pool.execute('COMMIT');
-    
-    res.json({ 
+    const userPoints = Number(pointsRow.total_points || 0);
+
+    if (userPoints < reward.points_required) {
+      throw new Error('Not enough points');
+    }
+
+    // 3) Deduct stock (we do NOT touch user.total_points)
+   await connection.execute(
+  `UPDATE reward SET stock_count = stock_count - 1 WHERE reward_id = ?`,
+  [reward.reward_id]
+);
+
+    // 4) Record redemption
+    await connection.execute(
+  `UPDATE user SET total_points = total_points - ? WHERE user_id = ?`,
+  [reward.points_required, userId]
+);
+
+// 5) Record redemption
+await connection.execute(
+  `INSERT INTO redemption (user_id, reward_id, points_spent)
+   VALUES (?, ?, ?)`,
+  [userId, reward.reward_id, reward.points_required]
+);
+
+    await connection.commit();
+    connection.release();
+
+    return res.json({
       success: true,
-      message: 'Reward redeemed successfully!',
-      points_remaining: total_points - points_required
+      message: `🎉 Successfully redeemed ${reward.name}!`,
+      new_balance: userPoints - reward.points_required
     });
+
   } catch (error) {
-    await pool.execute('ROLLBACK');
-    console.error('Redeem reward error:', error);
-    res.status(500).json({ success: false, message: 'Error redeeming reward' });
+    await connection.rollback();
+    connection.release();
+    console.error('❌ Redeem reward error:', error);
+    return res.status(400).json({ success: false, message: error.message });
   }
 };
 
-// Get user's redemption history - FIXED: redemption table column name
-const getRedemptionHistory = async (req, res) => {
+/**
+ * ✅ Get redemption history for current user
+ */
+export const getRedemptionHistory = async (req, res) => {
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
   try {
-    const [history] = await pool.execute(`
-      SELECT 
-        r.name as reward_name,
-        r.description,
-        red.points_spent,
-        red.redumption_date as redemption_date,
-        u.total_points as current_points
-      FROM redemption red
-      INNER JOIN reward r ON red.reward_id = r.reward_id
-      INNER JOIN user u ON red.user_id = u.user_id
-      WHERE red.user_id = ?
-      ORDER BY red.redumption_date DESC
-      LIMIT 10
-    `, [req.user.userId]);
+    const [rows] = await pool.execute(
+      `SELECT r.redemption_id, rw.name, rw.description, r.points_spent, r.redumption_date
+       FROM redemption r
+       JOIN reward rw ON r.reward_id = rw.reward_id
+       WHERE r.user_id = ?
+       ORDER BY r.redumption_date DESC`,
+      [userId]
+    );
 
-    res.json({ success: true, data: history });
+    res.json({ success: true, data: rows });
   } catch (error) {
-    console.error('Get redemption history error:', error);
-    res.status(500).json({ success: false, message: 'Error fetching redemption history' });
+    console.error('❌ Get redemption history error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch redemption history' });
   }
 };
-
-export { getRewards, redeemReward, getRedemptionHistory };

@@ -1,30 +1,31 @@
 import jwt from 'jsonwebtoken'
 import pool from '../config/database.js'
 
+// 🔐 Authenticate or verify JWT token
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
 
   if (!token) {
-    return res.status(401).json({ 
-      success: false, 
-      message: 'Access token required' 
+    return res.status(401).json({
+      success: false,
+      message: 'Access token required'
     })
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key_123')
-    
-    // Get user from database
+
+    // ✅ Fetch user info from DB
     const [users] = await pool.execute(
       'SELECT user_id, first_name, last_name, email, user_type, total_points FROM user WHERE user_id = ?',
       [decoded.userId]
     )
 
     if (users.length === 0) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'User not found' 
+      return res.status(401).json({
+        success: false,
+        message: 'User not found'
       })
     }
 
@@ -39,9 +40,15 @@ export const authenticateToken = async (req, res, next) => {
 
     next()
   } catch (error) {
-    return res.status(403).json({ 
-      success: false, 
-      message: 'Invalid or expired token' 
+    console.error('❌ Token verification failed:', error.message)
+    return res.status(403).json({
+      success: false,
+      message: 'Invalid or expired token'
     })
   }
 }
+
+// ⚙️ Alias export so both names work (avoids future import errors)
+export const verifyToken = authenticateToken
+
+export default { authenticateToken, verifyToken }

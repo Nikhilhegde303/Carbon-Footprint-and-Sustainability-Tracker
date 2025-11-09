@@ -1,9 +1,13 @@
-import express from 'express'
-import { getProfile } from '../controllers/userController.js'
-import { authenticateToken } from '../middleware/authMiddleware.js'
+import express from 'express';
+import { getProfile, getUserPoints } from '../controllers/userController.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
-const router = express.Router()
+const router = express.Router();
 
-router.get('/profile', authenticateToken, getProfile)
+// ✅ Get Profile
+router.get('/profile', authenticateToken, getProfile);
 
-export default router
+// ✅ Get Real-Time Points (used by Rewards Page & Profile Page)
+router.get('/points', authenticateToken, getUserPoints);
+
+export default router;

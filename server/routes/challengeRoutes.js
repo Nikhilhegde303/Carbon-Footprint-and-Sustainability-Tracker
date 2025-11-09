@@ -1,11 +1,15 @@
-import express from 'express'
-import { getChallenges, joinChallenge, getUserChallenges } from '../controllers/challengeController.js'
-import { authenticateToken } from '../middleware/authMiddleware.js'
+import express from "express";
+import { verifyToken } from "../middleware/authMiddleware.js";
+import {
+  listChallengesForUser,   // GET /api/challenges  → { available:[], mine:[] }
+  joinChallenge,           // POST /api/challenges/join
+  leaveChallenge           // DELETE /api/challenges/join/:challenge_id
+} from "../controllers/challengeController.js";
 
-const router = express.Router()
+const router = express.Router();
 
-router.get('/', authenticateToken, getChallenges)
-router.get('/user', authenticateToken, getUserChallenges)
-router.post('/join', authenticateToken, joinChallenge)
+router.get("/", verifyToken, listChallengesForUser);
+router.post("/join", verifyToken, joinChallenge);
+router.delete("/join/:challenge_id", verifyToken, leaveChallenge);
 
-export default router
+export default router;

@@ -1,275 +1,31 @@
-.activity-page {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  padding: 2rem;
-}
+.ch-page{max-width:1100px;margin:0 auto;padding:24px}
+.ch-hero h1{margin:0 0 6px}
+.ch-hero p{color:#567;margin:0 0 16px}
 
-.activity-container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
+.ch-tabs{display:flex;gap:8px;margin:8px 0 18px}
+.ch-tabs button{border:1px solid #e5e7eb;background:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
+.ch-tabs button.active{background:#0f766e;color:#fff;border-color:#0f766e}
+.badge{margin-left:8px;padding:0 8px;border-radius:999px;background:#eef6ff;border:1px solid #dbeafe;font-size:12px;color:#1e40af}
 
-.activity-container h1 {
-  color: #2d6a4f;
-  text-align: center;
-  margin-bottom: 0.5rem;
-  font-size: 2.5rem;
-}
-
-.activity-container > p {
-  text-align: center;
-  color: #666;
-  margin-bottom: 2rem;
-  font-size: 1.1rem;
-}
-
-/* Form Styles */
-.activity-form-card {
-  background: white;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  margin-bottom: 2rem;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.form-group select,
-.form-group input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 2px solid #e1e5e9;
-  border-radius: 8px;
-  font-size: 1rem;
-  transition: border-color 0.3s ease;
-}
-
-.form-group select:focus,
-.form-group input:focus {
-  outline: none;
-  border-color: #2d6a4f;
-}
-
-/* Calculation Preview */
-.calculation-preview {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin: 1.5rem 0;
-  border-left: 4px solid #2d6a4f;
-}
-
-.calculation-preview h3 {
-  margin: 0 0 1rem 0;
-  color: #2d6a4f;
-}
-
-.calculation-details {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.calculation-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0;
-}
-
-.calculation-item span {
-  color: #666;
-}
-
-.calculation-item strong {
-  color: #333;
-}
-
-.points {
-  color: #ff6b35 !important;
-}
-
-/* Buttons */
-.submit-btn {
-  width: 100%;
-  padding: 1rem;
-  background: linear-gradient(135deg, #2d6a4f, #40916c);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.submit-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(45, 106, 79, 0.3);
-}
-
-.submit-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.toggle-activities-btn {
-  background: #6c757d;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background 0.3s ease;
-}
-
-.toggle-activities-btn:hover {
-  background: #5a6268;
-}
-
-.view-activities-section {
-  text-align: center;
-  margin: 2rem 0;
-}
-
-/* Activities List */
-.activities-list {
-  background: white;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.activities-list h2 {
-  color: #2d6a4f;
-  margin-bottom: 1.5rem;
-  text-align: center;
-}
-
-.no-activities {
-  text-align: center;
-  padding: 3rem;
-  color: #666;
-}
-
-.activities-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.5rem;
-}
-
-/* Activity Card */
-.activity-card {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 1.5rem;
-  border-left: 4px solid #2d6a4f;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.activity-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.activity-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-}
-
-.activity-header h3 {
-  margin: 0;
-  color: #333;
-  font-size: 1.2rem;
-}
-
-.activity-date {
-  color: #666;
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
-
-.activity-details {
-  display: grid;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.detail-item span {
-  color: #666;
-}
-
-.detail-item strong {
-  color: #333;
-}
-
-.emission {
-  color: #e63946 !important;
-}
-
-/* Category Badges */
-.activity-category {
-  margin-top: 1rem;
-}
-
-.category-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-
-.category-badge.transport {
-  background: #a8dadc;
-  color: #1d3557;
-}
-
-.category-badge.energy {
-  background: #ffb4a2;
-  color: #6d6875;
-}
-
-.category-badge.waste {
-  background: #cdb4db;
-  color: #4a4e69;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .activity-page {
-    padding: 1rem;
-  }
-
-  .activities-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .activity-header {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .calculation-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-}
+.ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.ch-card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fafdfb;display:flex;flex-direction:column}
+.ch-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pill{padding:4px 10px;border-radius:999px;font-size:12px;border:1px solid #dbeafe;background:#eef6ff;color:#1e40af;text-transform:capitalize}
+.pill.transport{background:#eef6ff;color:#1e40af}
+.pill.energy{background:#f7fff1;color:#33691e;border-color:#dff2c6}
+.pill.diet{background:#fff6ef;color:#9a3412;border-color:#ffe2cc}
+.pill.lifestyle{background:#f4f3ff;color:#4c1d95;border-color:#e2d9ff}
+.desc{color:#475569;margin:10px 0 12px;min-height:48px}
+.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.meta strong{font-size:12px;color:#6b7280;display:block}
+.meta div div{font-weight:600}
+.actions{margin-top:auto;display:flex;justify-content:flex-end}
+.btn{padding:10px 14px;border:none;border-radius:10px;cursor:pointer}
+.btn.primary{background:#2d7d35;color:#fff}
+.btn.ghost{background:#fff;border:1px solid #e5e7eb}
+.empty{text-align:center;padding:40px 12px;color:#567}
+.skeleton-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.skeleton-card{height:180px;border-radius:14px;background:linear-gradient(90deg,#f2f4f7 25%,#e9edf2 37%,#f2f4f7 63%);background-size:400% 100%;animation:shimmer 1.2s infinite}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+.ch-toast{margin-bottom:12px;background:#e7ffe9;color:#175d28;border:1px solid #c7f5cf;padding:10px 14px;border-radius:8px;animation:fadeOut 2.5s forwards}
+@keyframes fadeOut{0%{opacity:1}80%{opacity:1}100%{opacity:0}}
