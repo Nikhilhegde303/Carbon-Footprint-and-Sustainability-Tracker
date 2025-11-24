@@ -88,11 +88,83 @@
   font-weight: 700;
 }
 
+
 .stat-content p {
   margin: 0.25rem 0 0 0;
   color: #666;
   font-size: 0.9rem;
 }
+
+.weekly-comparison {
+  margin-top: 30px;
+  padding: 20px;
+  border-radius: 12px;
+  background: #f6fff6;
+  border: 1px solid #d6f5d6;
+}
+
+.weekly-grid {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.weekly-box {
+  flex: 1;
+  padding: 15px;
+  border-radius: 10px;
+  text-align: center;
+  background: white;
+  border: 1px solid #eee;
+}
+
+.weekly-box h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #444;
+}
+
+.weekly-box .value {
+  margin-top: 8px;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.weekly-box.change .value.positive {
+  color: #2ba84a; /* Green (good) */
+}
+
+.weekly-box.change .value.negative {
+  color: #d33; /* Red (bad) */
+}
+
+.percentage {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.tips-container {
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+}
+
+.tips-container h3 {
+  margin-bottom: 8px;
+  font-size: 1rem;
+}
+
+.tips-container ul {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.tips-container li {
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+  color: #333;
+}
+
 
 /* Dashboard Content */
 .dashboard-content {

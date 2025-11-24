@@ -27,7 +27,7 @@ function Navbar() {
           fontWeight: 'bold',
           color: 'white'
         }}>
-          🌱 EcoTrack
+          🌿 EcoTrack
         </Link>
       </div>
       
@@ -39,6 +39,9 @@ function Navbar() {
             <Link to="/activities" style={{ color: 'white', textDecoration: 'none' }}>Activities</Link>
             <Link to="/challenges" style={{ color: 'white', textDecoration: 'none' }}>Challenges</Link>
             <Link to="/rewards" style={{ color: 'white', textDecoration: 'none' }}>Rewards</Link>
+            <Link to="/news" style={{ color: 'white', textDecoration: 'none' }}>Sustainability News</Link>
+
+
             <button 
               onClick={handleLogout}
               style={{

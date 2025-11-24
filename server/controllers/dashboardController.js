@@ -4,9 +4,8 @@ import pool from '../config/database.js';
 export const getDashboardData = async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log('📊 Fetching dashboard data for user:', userId);
 
-    // 1)user basic stats 
+    // 1) Basic user + sums
     const [userStats] = await pool.execute(
       `
       SELECT 
@@ -15,9 +14,9 @@ export const getDashboardData = async (req, res) => {
         u.last_name,
         u.total_points,
         u.date_joined,
-        COUNT(a.activity_id) as total_activities,
-        COALESCE(SUM(a.calculated_emission), 0) as total_emission,
-        COALESCE(SUM(a.points_earned), 0) as total_points_earned
+        COUNT(a.activity_id) AS total_activities,
+        COALESCE(SUM(a.calculated_emission), 0) AS total_emission,
+        COALESCE(SUM(a.points_earned), 0) AS total_points_earned
       FROM user u
       LEFT JOIN activity a ON u.user_id = a.user_id
       WHERE u.user_id = ?
@@ -27,13 +26,12 @@ export const getDashboardData = async (req, res) => {
     );
 
     if (!userStats || userStats.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // 2) Recent activities (if no activity rows, return empty)
+    const userRow = userStats[0];
+
+    // 2) Recent activities
     const [recentActivities] = await pool.execute(
       `
       SELECT 
@@ -59,9 +57,9 @@ export const getDashboardData = async (req, res) => {
       `
       SELECT 
         ef.category,
-        COUNT(a.activity_id) as activity_count,
-        COALESCE(SUM(a.calculated_emission), 0) as total_emission,
-        COALESCE(SUM(a.points_earned), 0) as total_points
+        COUNT(a.activity_id) AS activity_count,
+        COALESCE(SUM(a.calculated_emission), 0) AS total_emission,
+        COALESCE(SUM(a.points_earned), 0) AS total_points
       FROM activity a
       INNER JOIN emission_factor ef ON a.factor_id = ef.factor_id
       WHERE a.user_id = ?
@@ -70,22 +68,91 @@ export const getDashboardData = async (req, res) => {
       [userId]
     );
 
-    // 4) joined_challenges_count — this used to be a subquery referencing user_challenges.
+    // 4) Challenges joined (safe fallback)
     let joinedChallengesCount = 0;
     try {
       const [rows] = await pool.execute(
-        `SELECT COUNT(*) as cnt FROM user_challenges WHERE user_id = ?`,
+        `SELECT COUNT(*) AS cnt FROM user_challenges WHERE user_id = ?`,
         [userId]
       );
-      if (rows && rows.length > 0) joinedChallengesCount = rows[0].cnt || 0;
-    } catch (err) {
-      // Table probably doesn't exist — log and continue with default 0.
-      console.warn('⚠️ user_challenges table not found or query failed. Defaulting joined_challenges_count to 0.', err.message);
+      joinedChallengesCount = rows?.[0]?.cnt || 0;
+    } catch {
       joinedChallengesCount = 0;
     }
 
-    const userRow = userStats[0];
+    // 5) Weekly comparison
+    const [[weekly]] = await pool.execute(
+      `
+      SELECT
+        (SELECT COALESCE(SUM(calculated_emission), 0)
+         FROM activity
+         WHERE user_id = ?
+           AND activity_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        ) AS this_week,
+        (SELECT COALESCE(SUM(calculated_emission), 0)
+         FROM activity
+         WHERE user_id = ?
+           AND activity_date >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+           AND activity_date <  DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        ) AS last_week
+      `,
+      [userId, userId]
+    );
 
+    const thisWeekEmission = Number(weekly.this_week) || 0;
+    const lastWeekEmission = Number(weekly.last_week) || 0;
+    const delta = lastWeekEmission - thisWeekEmission; // positive = improvement
+
+    // Suggested weekly score (not stored yet)
+    let weeklyPoints = 0;
+    if (lastWeekEmission > 0 && delta > 0) {
+      weeklyPoints = Math.round((delta / lastWeekEmission) * 50);
+      if (weeklyPoints < 5) weeklyPoints = 5;
+      if (weeklyPoints > 50) weeklyPoints = 50;
+    }
+
+    // 6) Determine highest emission category for tips
+    const [topCat] = await pool.execute(
+      `
+      SELECT ef.category, SUM(a.calculated_emission) AS total
+      FROM activity a
+      JOIN emission_factor ef ON a.factor_id = ef.factor_id
+      WHERE a.user_id = ?
+      GROUP BY ef.category
+      ORDER BY total DESC
+      LIMIT 1
+      `,
+      [userId]
+    );
+
+    const tipCategory = topCat?.[0]?.category || 'lifestyle';
+
+    const tipsMap = {
+      Transport: [
+        'Try using public transport for short trips.',
+        'Consider carpooling with friends or colleagues.',
+        'Ensure proper tyre pressure to improve mileage.'
+      ],
+      Energy: [
+        'Turn off appliances when not in use.',
+        'Use LED bulbs to reduce energy consumption.',
+        'Keep AC temperature at 24–26°C for efficiency.'
+      ],
+      Food: [
+        'Reduce red meat intake to lower carbon footprint.',
+        'Choose seasonal and local produce.',
+        'Avoid food waste by planning meals beforehand.'
+      ],
+      lifestyle: [
+        'Repair before replacing household items.',
+        'Donate or recycle items instead of throwing away.',
+        'Avoid unnecessary purchases where possible.'
+      ]
+    };
+
+    const weeklyTips = tipsMap[tipCategory] || tipsMap.lifestyle;
+
+    // Final Response
     const dashboardData = {
       user: {
         first_name: userRow.first_name,
@@ -97,27 +164,31 @@ export const getDashboardData = async (req, res) => {
         total_activities: parseInt(userRow.total_activities, 10) || 0,
         total_emission: parseFloat(userRow.total_emission || 0).toFixed(2),
         total_points_earned: parseInt(userRow.total_points_earned, 10) || 0,
-        joined_challenges_count: parseInt(joinedChallengesCount, 10) || 0
+        joined_challenges_count: parseInt(joinedChallengesCount, 10) || 0,
+
+        // ✅ Weekly Metrics
+        this_week_emission: thisWeekEmission.toFixed(2),
+        last_week_emission: lastWeekEmission.toFixed(2),
+        change_percentage:
+          lastWeekEmission > 0
+            ? (((lastWeekEmission - thisWeekEmission) / lastWeekEmission) * 100).toFixed(1)
+            : 0
       },
       recent_activities: recentActivities || [],
-      category_breakdown: categoryBreakdown || []
+      category_breakdown: categoryBreakdown || [],
+      weekly: {
+        this_week_kg: thisWeekEmission.toFixed(2),
+        last_week_kg: lastWeekEmission.toFixed(2),
+        delta_kg: delta.toFixed(2),
+        points_award: weeklyPoints,
+        tips: weeklyTips
+      }
     };
 
-    console.log('📈 Dashboard data prepared:', {
-      activities: (recentActivities || []).length,
-      totalPoints: dashboardData.user.total_points
-    });
-
-    return res.json({
-      success: true,
-      data: dashboardData
-    });
+    return res.json({ success: true, data: dashboardData });
 
   } catch (error) {
     console.error('❌ Dashboard error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error fetching dashboard data'
-    });
+    return res.status(500).json({ success: false, message: 'Error fetching dashboard data' });
   }
 };

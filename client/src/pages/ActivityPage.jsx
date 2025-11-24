@@ -15,6 +15,7 @@ const ActivityPage = () => {
     activity_date: new Date().toISOString().split('T')[0]
   });
   const [calculation, setCalculation] = useState(null);
+  const [lastFeedback, setLastFeedback] = useState(null);
 
   useEffect(() => {
     fetchEmissionFactors();
@@ -51,22 +52,22 @@ const ActivityPage = () => {
     }));
 
     // Recalculate when factor or consumption changes
-    if ((name === 'factor_id' || name === 'consumption_value') && formData.consumption_value && formData.factor_id) {
-      calculateEmission();
+    if ((name === 'factor_id' || name === 'consumption_value') && (name === 'factor_id' ? formData.consumption_value : formData.factor_id)) {
+      calculateEmission(name === 'factor_id' ? value : formData.factor_id, name === 'consumption_value' ? value : formData.consumption_value);
     }
   };
 
-  const calculateEmission = () => {
-    if (!formData.consumption_value || !formData.factor_id) return;
+  const calculateEmission = (factorId = formData.factor_id, consumption = formData.consumption_value) => {
+    if (!consumption || !factorId) return;
 
-    const factor = emissionFactors.find(f => f.factor_id == formData.factor_id);
+    const factor = emissionFactors.find(f => f.factor_id == factorId);
     if (factor) {
-      const emission = formData.consumption_value * factor.emission_factor;
-      const points = Math.round(emission * 10);
+      const emission = Number(consumption) * Number(factor.emission_factor);
       setCalculation({
         emission: emission.toFixed(4),
-        points: points,
-        unit: factor.unit
+        unit: factor.unit,
+        activity_name: factor.activity_name,
+        category: factor.category
       });
     }
   };
@@ -81,8 +82,19 @@ const ActivityPage = () => {
     setLoading(true);
     try {
       const result = await addActivity(formData);
-      alert(`✅ ${result.message}\n🎉 Earned ${result.pointsEarned} points!`);
-      
+
+      // Show eco feedback instead of points
+      setLastFeedback(result.feedback || null);
+
+      alert(
+        [
+          `✅ ${result.message}`,
+          `• Activity: ${result.activityName}`,
+          `• Emission: ${result.calculatedEmission} ${result.unit}`,
+          result?.feedback?.summary ? `• Feedback: ${result.feedback.summary}` : ''
+        ].filter(Boolean).join('\n')
+      );
+
       // Reset form
       setFormData({
         factor_id: emissionFactors[0]?.factor_id || '',
@@ -90,8 +102,7 @@ const ActivityPage = () => {
         activity_date: new Date().toISOString().split('T')[0]
       });
       setCalculation(null);
-      
-      // Refresh activities if showing
+
       if (showActivities) {
         fetchActivities();
       }
@@ -103,9 +114,7 @@ const ActivityPage = () => {
   };
 
   const toggleActivities = () => {
-    if (!showActivities) {
-      fetchActivities();
-    }
+    if (!showActivities) fetchActivities();
     setShowActivities(!showActivities);
   };
 
@@ -113,16 +122,16 @@ const ActivityPage = () => {
     <div className="activity-page">
       <div className="activity-container">
         <h1>Log New Activity</h1>
-        <p>Track your carbon emissions and earn points</p>
+        <p>Track your emissions. Points are awarded weekly based on reduction.</p>
 
         {/* Activity Form */}
         <div className="activity-form-card">
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label>Activity Type</label>
-              <select 
-                name="factor_id" 
-                value={formData.factor_id} 
+              <select
+                name="factor_id"
+                value={formData.factor_id}
                 onChange={handleInputChange}
                 required
               >
@@ -163,22 +172,23 @@ const ActivityPage = () => {
             {/* Calculation Preview */}
             {calculation && (
               <div className="calculation-preview">
-                <h3>Emission Calculation</h3>
+                <h3>Emission Preview</h3>
                 <div className="calculation-details">
                   <div className="calculation-item">
                     <span>Carbon Emission:</span>
                     <strong>{calculation.emission} {calculation.unit}</strong>
                   </div>
                   <div className="calculation-item">
-                    <span>Points to Earn:</span>
-                    <strong className="points">{calculation.points} points</strong>
+                    <span>Activity:</span>
+                    <strong>{calculation.activity_name}</strong>
                   </div>
                 </div>
+                <small>Note: Weekly points are awarded when your 7-day total is lower than the previous 7 days.</small>
               </div>
             )}
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="submit-btn"
               disabled={loading}
             >
@@ -187,9 +197,19 @@ const ActivityPage = () => {
           </form>
         </div>
 
+        {/* Optional inline feedback */}
+        {lastFeedback && (
+          <div className={`eco-feedback eco-${lastFeedback.level}`}>
+            <div className="eco-feedback-header">{lastFeedback.summary}</div>
+            <ul className="eco-feedback-tips">
+              {lastFeedback.suggestions?.map((t, i) => <li key={i}>• {t}</li>)}
+            </ul>
+          </div>
+        )}
+
         {/* View Activities Button */}
         <div className="view-activities-section">
-          <button 
+          <button
             onClick={toggleActivities}
             className="toggle-activities-btn"
           >
@@ -227,12 +247,12 @@ const ActivityPage = () => {
                         </strong>
                       </div>
                       <div className="detail-item">
-                        <span>Points Earned:</span>
-                        <strong className="points">+{activity.points_earned}</strong>
+                        <span>Points:</span>
+                        <strong className="points">Awarded weekly</strong>
                       </div>
                     </div>
                     <div className="activity-category">
-                      <span className={`category-badge ${activity.category.toLowerCase()}`}>
+                      <span className={`category-badge ${String(activity.category || '').toLowerCase()}`}>
                         {activity.category}
                       </span>
                     </div>

@@ -1,68 +1,60 @@
 import pool from '../config/database.js';
 import { updateChallengeProgress } from '../utils/challengeProgress.js';
 
-// --- Sophisticated Points Calculation ---
-const calculatePoints = (activityType, calculatedEmission, consumptionValue) => {
-  console.log('🔢 Calculating points for:', { activityType, calculatedEmission, consumptionValue });
+// --- Lightweight eco feedback engine (no points on log) ---
+const classifyEmission = (category, kg) => {
+  const c = String(category || '').toLowerCase();
 
-  let basePoints = 0;
-  let efficiencyBonus = 0;
-  let sustainabilityBonus = 0;
+  // simple, interpretable thresholds (kg CO2) per log
+  const bands = c.includes('transport')
+    ? { low: 2, med: 8 }
+    : c.includes('energy')
+    ? { low: 3, med: 10 }
+    : c.includes('diet') || c.includes('food')
+    ? { low: 1, med: 3 }
+    : { low: 1, med: 2 }; // lifestyle/other
 
-  switch (activityType) {
-    case 'Car (Petrol)':
-      basePoints = 15;
-      const carEmissionPerKm = calculatedEmission / consumptionValue;
-      if (carEmissionPerKm < 0.15) efficiencyBonus = 25;
-      else if (carEmissionPerKm < 0.18) efficiencyBonus = 15;
-      else efficiencyBonus = 5;
-      break;
-
-    case 'Bus':
-      basePoints = 25;
-      efficiencyBonus = 20;
-      sustainabilityBonus = 15;
-      break;
-
-    case 'Electricity':
-      basePoints = 20;
-      if (consumptionValue < 5) efficiencyBonus = 30;
-      else if (consumptionValue < 10) efficiencyBonus = 20;
-      else efficiencyBonus = 10;
-      break;
-
-    case 'Beef':
-      basePoints = 8;
-      if (consumptionValue < 0.3) efficiencyBonus = 15;
-      else if (consumptionValue < 0.5) efficiencyBonus = 8;
-      else efficiencyBonus = 2;
-      break;
-
-    case 'Vegetables':
-      basePoints = 20;
-      efficiencyBonus = 15;
-      sustainabilityBonus = 10;
-      break;
-
-    default:
-      basePoints = 15;
-      efficiencyBonus = 10;
-  }
-
-  const totalPoints = basePoints + efficiencyBonus + sustainabilityBonus;
-  console.log('📊 Points breakdown:', { basePoints, efficiencyBonus, sustainabilityBonus, totalPoints });
-  
-  return Math.max(5, Math.min(totalPoints, 100));
+  if (kg <= bands.low) return 'low';
+  if (kg <= bands.med) return 'medium';
+  return 'high';
 };
 
-// --- Add Activity ---
+const tipsByCategory = (category) => {
+  const c = String(category || '').toLowerCase();
+  if (c.includes('transport')) {
+    return [
+      'Try public transport or carpool for similar trips.',
+      'Combine errands to reduce total distance.',
+      'Keep tyre pressure optimal for efficiency.'
+    ];
+  }
+  if (c.includes('energy')) {
+    return [
+      'Turn off appliances at the wall to avoid standby usage.',
+      'Shift heavy usage to daytime if you have rooftop solar.',
+      'Use LED bulbs and set AC to 24–26°C.'
+    ];
+  }
+  if (c.includes('diet') || c.includes('food')) {
+    return [
+      'Prefer seasonal, local produce to reduce embedded emissions.',
+      'Plan meals to avoid food waste.',
+      'Swap one red-meat meal for plant-based this week.'
+    ];
+  }
+  return [
+    'Choose durable, repairable items over disposables.',
+    'Recycle and donate items instead of discarding.',
+    'Ask: do I need this, or is there a lower-impact alternative?'
+  ];
+};
+
+// --- Add Activity (no per-activity points; only emission & feedback) ---
 export const addActivity = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { factor_id, consumption_value, activity_date } = req.body;
     const userId = req.user.userId;
-
-    console.log('🔵 Adding activity:', { userId, factor_id, consumption_value, activity_date });
 
     if (!factor_id || !consumption_value || !activity_date) {
       return res.status(400).json({
@@ -70,8 +62,7 @@ export const addActivity = async (req, res) => {
         message: 'All fields are required: factor_id, consumption_value, activity_date',
       });
     }
-
-    if (consumption_value <= 0) {
+    if (Number(consumption_value) <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Consumption value must be greater than 0',
@@ -79,83 +70,74 @@ export const addActivity = async (req, res) => {
     }
 
     const [factors] = await connection.execute(
-      'SELECT * FROM emission_factor WHERE factor_id = ?',
+      'SELECT factor_id, activity_name, emission_factor, unit, category FROM emission_factor WHERE factor_id = ?',
       [factor_id]
     );
-
     if (!factors || factors.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid activity type selected',
-      });
+      return res.status(400).json({ success: false, message: 'Invalid activity type selected' });
     }
 
     const factor = factors[0];
     const calculatedEmission = parseFloat(
-      (consumption_value * factor.emission_factor).toFixed(4)
+      (Number(consumption_value) * Number(factor.emission_factor)).toFixed(4)
     );
 
-    const pointsEarned = calculatePoints(
-      factor.activity_name,
-      calculatedEmission,
-      consumption_value
-    );
+    // Points per activity are now **zero**; points come from weekly reduction only
+    const pointsEarned = 0;
 
     await connection.beginTransaction();
-
     const [result] = await connection.execute(
       `INSERT INTO activity 
          (user_id, factor_id, activity_date, consumption_value, calculated_emission, points_earned, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
       [userId, factor_id, activity_date, consumption_value, calculatedEmission, pointsEarned]
     );
-
-    await connection.execute(
-      'UPDATE user SET total_points = total_points + ? WHERE user_id = ?',
-      [pointsEarned, userId]
-    );
-
     await connection.commit();
 
-    console.log('✅ Activity added successfully:', result.insertId);
-
-    // Update challenge progress (non-critical, so don't fail if this errors)
+    // Update challenge progress (best-effort)
     try {
       await updateChallengeProgress(userId);
-      console.log('✅ Challenge progress updated');
-    } catch (progressError) {
-      console.error('⚠️ Challenge progress update failed:', progressError);
-      // Continue - don't fail the activity addition
+    } catch (e) {
+      console.warn('Challenge progress update failed:', e?.message || e);
     }
 
-    res.json({
+    // Prepare UX feedback
+    const level = classifyEmission(factor.category, calculatedEmission);
+    const tips = tipsByCategory(factor.category);
+
+    return res.json({
       success: true,
-      message: `Activity logged successfully! Earned ${pointsEarned} points`,
+      message: `Activity logged successfully.`,
       activityId: result.insertId,
-      pointsEarned,
       calculatedEmission,
       activityName: factor.activity_name,
+      unit: factor.unit,
+      feedback: {
+        level,                // 'low' | 'medium' | 'high'
+        summary:
+          level === 'low'
+            ? '✅ Low-emission entry. Great job!'
+            : level === 'medium'
+            ? '🙂 Moderate emissions. There’s room to improve.'
+            : '⚠️ High emissions for this category.',
+        suggestions: tips
+      }
     });
   } catch (error) {
     console.error('❌ Error adding activity:', error);
     if (connection) await connection.rollback();
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add activity to database',
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: 'Failed to add activity', error: error.message });
   } finally {
     if (connection) connection.release();
   }
 };
 
-// --- Get Activities ---
+// --- Get Activities (unchanged except points_earned might be zero for new rows) ---
 export const getActivities = async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log('🔵 Fetching activities for user:', userId);
-
-    const [activities] = await pool.execute(`
+    const [activities] = await pool.execute(
+      `
       SELECT 
         a.activity_id,
         a.activity_date,
@@ -170,15 +152,12 @@ export const getActivities = async (req, res) => {
       INNER JOIN emission_factor ef ON a.factor_id = ef.factor_id
       WHERE a.user_id = ?
       ORDER BY a.activity_date DESC, a.created_at DESC
-    `, [userId]);
-
-    res.json({ success: true, data: activities });
+      `,
+      [userId]
+    );
+    return res.json({ success: true, data: activities });
   } catch (error) {
     console.error('❌ Error fetching activities:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch activities from database',
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: 'Failed to fetch activities', error: error.message });
   }
 };

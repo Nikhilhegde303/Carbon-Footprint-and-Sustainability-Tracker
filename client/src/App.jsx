@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard.jsx'
 import ActivityPage from './pages/ActivityPage.jsx'
 import ChallengesPage from './pages/ChallengesPage.jsx'
 import RewardsPage from './pages/RewardsPage.jsx'
+import NewsPage from './pages/NewsPage.jsx';
+
 //import './App.css'
 
 // Protected Route Component
@@ -67,6 +69,12 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+              
+              <Route path="/news" 
+              element={<NewsPage />
+              } 
+              />
+
               
               {/* Catch all route - redirect to home */}
               <Route path="*" element={<Navigate to="/" />} />

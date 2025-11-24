@@ -1,55 +1,67 @@
 // client/src/pages/Dashboard.jsx
-import { useState, useEffect } from 'react'
-import { useAuth } from '../context/AuthContext.jsx'
-import { getDashboardData } from '../utils/api.js'
-import './Dashboard.css'
+import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
+import { getDashboardData } from '../utils/api.js';
+import './Dashboard.css';
 
 // Chart imports
-import { Pie } from 'react-chartjs-2'
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
-ChartJS.register(ArcElement, Tooltip, Legend)
+import { Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 const Dashboard = () => {
-  const { user } = useAuth()
-  const [dashboardData, setDashboardData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const { user } = useAuth();
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showCongrats, setShowCongrats] = useState(false);
 
   useEffect(() => {
-    fetchDashboardData()
+    fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true)
-      setError('')
+      setLoading(true);
+      setError('');
 
-      const data = await getDashboardData()
-      console.log('📊 Dashboard response:', data)
+      const data = await getDashboardData();
+      setDashboardData(data);
 
-      setDashboardData(data)
+      // congrats popup logic (once per week)
+      const wk = data?.weekly;
+      if (wk?.points_award > 0 && wk?.week_start) {
+        const key = `congrats_shown_${wk.week_start}`;
+        const already = localStorage.getItem(key);
+        if (!already) {
+          setTimeout(() => {
+            setShowCongrats(true);
+            localStorage.setItem(key, '1');
+          }, 1200);
+        }
+      }
     } catch (err) {
-      console.error('❌ Error fetching dashboard:', err)
-      setError(err.message || 'Failed to load dashboard data')
+      console.error('❌ Error fetching dashboard:', err);
+      setError(err.message || 'Failed to load dashboard data');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const getGreeting = () => {
-    const hour = new Date().getHours()
-    if (hour < 12) return 'Good morning'
-    if (hour < 18) return 'Good afternoon'
-    return 'Good evening'
-  }
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const getEmissionLevel = (emission) => {
-    const num = Number(emission) || 0
-    if (num < 10) return 'low'
-    if (num < 50) return 'medium'
-    return 'high'
-  }
+    const num = Number(emission) || 0;
+    if (num < 10) return 'low';
+    if (num < 50) return 'medium';
+    return 'high';
+  };
 
   if (loading) {
     return (
@@ -57,7 +69,7 @@ const Dashboard = () => {
         <div className="loading-spinner"></div>
         <p>Loading your carbon footprint data...</p>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -70,24 +82,23 @@ const Dashboard = () => {
           Try Again
         </button>
       </div>
-    )
+    );
   }
 
-  const stats = dashboardData?.stats ?? {}
-  const recentActivities = dashboardData?.recent_activities ?? []
-  const userData = dashboardData?.user ?? user ?? {}
+  const stats = dashboardData?.stats ?? {};
+  const recentActivities = dashboardData?.recent_activities ?? [];
+  const userData = dashboardData?.user ?? user ?? {};
+  const weekly = dashboardData?.weekly ?? { this_week_kg: 0, last_week_kg: 0, delta_kg: 0, points_award: 0, tips: [] };
 
-  // Chart data (safe)
-  const chartLabels = (dashboardData?.category_breakdown || []).map(c => c.category)
-  const chartValues = (dashboardData?.category_breakdown || []).map(c => Number(c.total_emission) || 0)
-
+  // Chart data
+  const chartLabels = (dashboardData?.category_breakdown || []).map(c => c.category);
+  const chartValues = (dashboardData?.category_breakdown || []).map(c => Number(c.total_emission) || 0);
   const pieData = {
     labels: chartLabels,
     datasets: [
       {
         label: 'CO₂ Emission (kg)',
         data: chartValues,
-        // colors will be applied by Chart defaults if not specified
         backgroundColor: [
           'rgba(75,192,192,0.6)',
           'rgba(54,162,235,0.6)',
@@ -99,15 +110,40 @@ const Dashboard = () => {
         borderWidth: 1
       }
     ]
-  }
+  };
 
   return (
     <div className="dashboard">
+      {/* Congrats Modal */}
+      {showCongrats && (
+        <div className="modal-backdrop" onClick={() => setShowCongrats(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3>🎉 Congratulations!</h3>
+            <p>
+              You reduced your emissions by <b>{Math.max(0, weekly.delta_kg).toFixed(2)} kg CO₂</b> vs last week.
+              You’ve earned <b>{weekly.points_award}</b> weekly points!
+            </p>
+            {weekly?.tips?.length > 0 && (
+              <>
+                <h4>Keep it up with these tips:</h4>
+                <ul className="modal-tips">
+                  {weekly.tips.map((t, i) => <li key={i}>• {t}</li>)}
+                </ul>
+              </>
+            )}
+            <button className="cta-button" onClick={() => setShowCongrats(false)}>Nice!</button>
+          </div>
+        </div>
+      )}
+
       <div className="dashboard-header">
         <h1>{getGreeting()}, {userData?.first_name || 'Friend'}!</h1>
         <p>Track your carbon reduction journey</p>
         <div className="user-points">
           <span className="points-badge">⭐ {userData?.total_points || 0} Points</span>
+          {weekly.points_award > 0 && (
+            <span className="points-badge secondary">🏅 Weekly: +{weekly.points_award}</span>
+          )}
         </div>
       </div>
 
@@ -132,18 +168,22 @@ const Dashboard = () => {
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon">⭐</div>
+          <div className="stat-icon">🏅</div>
           <div className="stat-content">
-            <h3>{stats.total_points_earned ?? 0}</h3>
-            <p>Total Points Earned</p>
+            <h3>{weekly.this_week_kg.toFixed?.(2) ?? weekly.this_week_kg} kg</h3>
+            <p>This Week Emission</p>
+            <small>
+              Last week: {weekly.last_week_kg.toFixed?.(2) ?? weekly.last_week_kg} kg
+              {weekly.delta_kg > 0 ? ` (↓ ${weekly.delta_kg.toFixed(2)} kg)` : ` (↑ ${Math.abs(weekly.delta_kg).toFixed(2)} kg)`}
+            </small>
           </div>
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon">🏆</div>
+          <div className="stat-icon">⭐</div>
           <div className="stat-content">
-            <h3>{stats.joined_challenges_count ?? 0}</h3>
-            <p>Challenges Joined</p>
+            <h3>{stats.total_points_earned ?? 0}</h3>
+            <p>Total Points (legacy per-activity)</p>
           </div>
         </div>
       </div>
@@ -178,7 +218,7 @@ const Dashboard = () => {
                   </div>
                   <div className="activity-stats">
                     <span className="emission">{activity.calculated_emission} kg CO₂</span>
-                    <span className="points">+{activity.points_earned} points</span>
+                    <span className="points">weekly points apply</span>
                   </div>
                 </div>
               ))}
@@ -206,6 +246,48 @@ const Dashboard = () => {
             <h2>Emission by Category</h2>
           </div>
 
+          {/* Weekly Comparison Section */}
+<div className="dashboard-section weekly-comparison">
+  <div className="section-header">
+    <h2>Weekly Emission Progress</h2>
+  </div>
+
+  <div className="weekly-grid">
+    <div className="weekly-box this-week">
+      <h3>This Week</h3>
+      <p className="value">{dashboardData.weekly.this_week_kg} kg CO₂</p>
+    </div>
+
+    <div className="weekly-box last-week">
+      <h3>Last Week</h3>
+      <p className="value">{dashboardData.weekly.last_week_kg} kg CO₂</p>
+    </div>
+
+    <div className="weekly-box change">
+      <h3>Change</h3>
+      <p className={
+        dashboardData.weekly.delta_kg > 0 ? "value positive" : "value negative"
+      }>
+        {dashboardData.weekly.delta_kg > 0 ? "↓ Reduced " : "↑ Increased "}
+        {Math.abs(dashboardData.weekly.delta_kg)} kg
+      </p>
+      <span className="percentage">
+        {dashboardData.stats.change_percentage}% vs last week
+      </span>
+    </div>
+  </div>
+
+  <div className="tips-container">
+    <h3>Sustainability Tips for You</h3>
+    <ul>
+      {dashboardData.weekly.tips.map((tip, idx) => (
+        <li key={idx}>• {tip}</li>
+      ))}
+    </ul>
+  </div>
+</div>
+
+
           {dashboardData?.category_breakdown?.length > 0 ? (
             <>
               <div className="category-breakdown">
@@ -220,12 +302,13 @@ const Dashboard = () => {
                         {parseFloat(category.total_emission).toFixed(2)} kg CO₂
                       </span>
                       <span className="category-points">
-                        {category.total_points} points
+                        {category.total_points} pts (legacy)
                       </span>
                     </div>
                   </div>
                 ))}
               </div>
+              
 
               <div className="chart-wrapper">
                 <Pie data={pieData} options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }} />
@@ -237,7 +320,7 @@ const Dashboard = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Dashboard
+export default Dashboard;

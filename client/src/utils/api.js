@@ -338,5 +338,34 @@ export const getRedemptionHistory = async () => {
     console.error('❌ getRedemptionHistory error:', err)
     throw new Error(err.message || 'Failed to fetch redemption history.')
   }
+
+  
 }
+
+// --- Sustainability News ---
+export const getSustainabilityNews = async () => {
+  const token = localStorage.getItem('token');
+  const res = await fetch('/api/news', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  // Graceful error handling
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Invalid response from news service');
+  }
+
+  if (!res.ok || data?.success === false) {
+    throw new Error(data?.message || 'Failed to fetch news');
+  }
+
+  // backend returns { success, data: [] }
+  return Array.isArray(data.data) ? data.data : [];
+};
+
 
